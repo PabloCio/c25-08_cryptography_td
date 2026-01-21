@@ -547,37 +547,80 @@ class CasinoExpert(QMainWindow):
         self.btn_audit.setEnabled(True)
 
     def show_graph(self):
-        # Même visuel / mêmes graphes
+        # Même visuel / mêmes graphes + AJOUT courbe escalier
         plt.close('all')
 
+        # ----------------------------
+        # Données de base
+        # ----------------------------
         counts = [self.audit_data.count(i) for i in range(37)]
         expected = self.target_audit / 37
         chi2_score = sum([((c - expected) ** 2) / expected for c in counts])
         is_safe = chi2_score < 60.0
 
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
-        plt.subplots_adjust(hspace=0.4)
+        # ----------------------------
+        # Figure : 3 graphes (histo, régularité, escalier)
+        # ----------------------------
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(11, 11))
+        plt.subplots_adjust(hspace=0.55)
 
+        # Style sombre
         fig.patch.set_facecolor('#202020')
-        for ax in [ax1, ax2]:
+        for ax in [ax1, ax2, ax3]:
             ax.set_facecolor('#303030')
             ax.tick_params(colors='white')
             ax.xaxis.label.set_color('white')
             ax.yaxis.label.set_color('white')
             ax.title.set_color('white')
 
+        # ----------------------------
+        # GRAPHE 1 : Histogramme
+        # ----------------------------
         colors = ['green'] + ['#D00000' if i in RouletteLogic.RED_NUMBERS else '#101010' for i in range(1, 37)]
         ax1.bar(range(37), counts, color=colors, edgecolor='gray')
         ax1.axhline(expected, color='cyan', linestyle='--', label='Moyenne')
         ax1.set_title(f"Histogramme ({self.target_audit} tirages)")
+        ax1.set_xlabel("Numéro (0-36)")
+        ax1.set_ylabel("Fréquence")
         ax1.legend()
 
+        # ----------------------------
+        # GRAPHE 2 : Courbe triée (régularité)
+        # ----------------------------
         sorted_counts = sorted(counts)
         ax2.plot(range(37), sorted_counts, color='#bd93f9', linewidth=3, marker='o')
         ax2.axhline(expected, color='cyan', linestyle='--')
         ax2.fill_between(range(37), expected * 0.9, expected * 1.1, color='cyan', alpha=0.1)
         ax2.set_title("Courbe de Régularité (Triée)")
+        ax2.set_xlabel("Index trié (du moins sorti au plus sorti)")
+        ax2.set_ylabel("Fréquence")
 
+        # ----------------------------
+        # GRAPHE 3 : Courbe escalier (valeurs brutes triées 0..36)
+        # ----------------------------
+        sorted_values = np.sort(np.array(self.audit_data, dtype=np.int16))
+
+        # Si énorme N, on sous-échantillonne pour garder une figure fluide
+        max_points = 200_000
+        if len(sorted_values) > max_points:
+            step = max(1, len(sorted_values) // max_points)
+            sorted_values_plot = sorted_values[::step]
+            x = np.arange(len(sorted_values_plot))
+        else:
+            sorted_values_plot = sorted_values
+            x = np.arange(len(sorted_values_plot))
+
+        ax3.step(x, sorted_values_plot, where="post", color="#f1c40f", linewidth=2, label="Valeurs triées")
+        ax3.set_title("Courbe Escalier (Données brutes triées – 0..36)")
+        ax3.set_xlabel("Index (dans la liste triée)")
+        ax3.set_ylabel("Valeur (0..36)")
+        ax3.set_ylim(-1, 37)
+        ax3.grid(alpha=0.25)
+        ax3.legend()
+
+        # ----------------------------
+        # Titre global
+        # ----------------------------
         status = "CERTIFIÉ ÉQUITABLE" if is_safe else "ATTENTION BIAIS"
         col_s = "#00ff00" if is_safe else "red"
         fig.suptitle(f"{status}\nScore Chi2: {chi2_score:.2f}", fontsize=14, color=col_s, weight='bold')
@@ -587,7 +630,6 @@ class CasinoExpert(QMainWindow):
     def closeEvent(self, event):
         self.thread.stop()
         event.accept()
-
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
